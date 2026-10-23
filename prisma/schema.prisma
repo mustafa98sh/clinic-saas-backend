@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. جدول العيادات (الأساس لنظام الـ SaaS)
+model Clinic {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  username  String   @unique
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  expiresAt DateTime? // تاريخ انتهاء الاشتراك
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctors     Doctor[]
+  patients    Patient[]
+  appointments Appointment[]
+  members     ClinicMember[]
+}
+
+// 2. جدول الأطباء
+model Doctor {
+  id            String   @id @default(uuid())
+  name          String
+  specialization String
+  phone         String?
+  clinicId      String
+  clinic        Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  appointments Appointment[]
+}
+
+// 3. جدول أعضاء العيادة (الموظفين، السكرتارية، والصلاحيات)
+model ClinicMember {
+  id          String   @id @default(uuid())
+  userId      String   // ربط مع نظام المصادقة لاحقاً
+  permissions String[] // قائمة الصلاحيات
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+// 4. جدول المرضى
+model Patient {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  age       Int?
+  address   String?
+  gender    String?
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  appointments Appointment[]
+}
+
+// 5. جدول المواعيد والحجوزات
+model Appointment {
+  id          String   @id @default(uuid())
+  state       String   @default("PENDING") // حالة الموعد: مؤكد، ملغي، تم الكشف
+  sequence    Int?     // تسلسل دور المريض في الانتظار
+  fee         Float?   // سعر الكشف
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId    String?
+  doctor      Doctor?  @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+}
