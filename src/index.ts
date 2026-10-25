@@ -30,7 +30,7 @@ app.post('/api/patients/appointments', async (req, res) => {
             data: {
                 name,
                 phone,
-                clinicId: clinicId || 'default-clinic-id',
+                clinicId: clinicId || '9aa6f17e-6202-439f-a666-9fca813c2c87',
             },
         });
 
