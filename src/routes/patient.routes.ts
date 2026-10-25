@@ -1,55 +1,75 @@
 import { Router } from 'express';
-import { supabase } from '../index'; // أو '../db' حسب المكان الذي تصدر منه supabase
+import { PrismaClient } from '@prisma/client';
 
 const router = Router();
+const prisma = new PrismaClient();
 
-// إضافة موعد جديد
+// 1. مسار إضافة موعد جديد
 router.post('/appointments', async (req, res) => {
     try {
-        const { name, phone, appointment_time, type, status } = req.body;
+        const { name, phone, appointment_time, type, status, clinicId } = req.body;
 
-        const { data, error } = await supabase
-            .from('patients')
-            .insert([
-                {
-                    name,
-                    phone,
-                    appointment_time,
-                    type,
-                    status: status || 'في الانتظار',
-                },
-            ])
-            .select();
+        // إنشاء مريض جديد أو ربطه
+        const patient = await prisma.patient.create({
+            data: {
+                name,
+                phone,
+                clinicId: clinicId || 'default-clinic-id',
+            },
+        });
 
-        if (error) {
-            return res.status(400).json({ success: false, error: error.message });
-        }
+        // إنشاء الموعد المرتبط بالمريض
+        const appointment = await prisma.appointment.create({
+            data: {
+                patientId: patient.id,
+                clinicId: patient.clinicId,
+                state: status || 'PENDING',
+            },
+            include: {
+                patient: true,
+            },
+        });
 
         res.status(201).json({
             success: true,
-            message: 'تم إضافة الموعد بنجاح',
-            data: data[0],
+            data: {
+                id: appointment.id,
+                name: patient.name,
+                phone: patient.phone,
+                appointment_time: appointment_time || '05:00 م',
+                type: type || 'كشف عام',
+                status: appointment.state,
+            },
         });
-    } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// جلب مواعيد اليوم
+// 2. مسار جلب مواعيد اليوم
 router.get('/appointments/today', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('patients')
-            .select('*')
-            .order('created_at', { ascending: false });
+        const appointments = await prisma.appointment.findMany({
+            include: {
+                patient: true,
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+        });
 
-        if (error) {
-            return res.status(400).json({ success: false, error: error.message });
-        }
+        const formattedData = appointments.map((app) => ({
+            id: app.id,
+            name: app.patient.name,
+            phone: app.patient.phone,
+            appointment_time: '05:00 م',
+            type: 'كشف عام',
+            status: app.state === 'PENDING' ? 'في الانتظار' : app.state,
+        }));
 
-        res.status(200).json({ success: true, data });
-    } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
+        res.status(200).json({ success: true, data: formattedData });
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 

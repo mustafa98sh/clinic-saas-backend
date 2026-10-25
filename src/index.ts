@@ -1,17 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.routes';
 
-// 1. تحميل متغيرات البيئة في البداية أولاً
 dotenv.config();
 
-// 2. إنشاء كائن Supabase بعد تحميل متغيرات البيئة
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
-export const supabase = createClient(supabaseUrl, supabaseKey);
-
+const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -23,56 +18,76 @@ app.get('/', (req, res) => {
     res.json({ success: true, message: 'Clinic SaaS Backend is running! 🚀' });
 });
 
-// ربط مسارات المصادقة
+// مسارات المصادقة
 app.use('/api/auth', authRoutes);
 
-// مسار إضافة موعد جديد
+// 1. مسار إضافة موعد جديد باستخدام Prisma
 app.post('/api/patients/appointments', async (req, res) => {
     try {
-        const { name, phone, appointment_time, type, status } = req.body;
+        const { name, phone, appointment_time, type, status, clinicId } = req.body;
 
-        const { data, error } = await supabase
-            .from('patients')
-            .insert([
-                {
-                    name,
-                    phone,
-                    appointment_time,
-                    type,
-                    status: status || 'في الانتظار',
-                },
-            ])
-            .select();
+        const patient = await prisma.patient.create({
+            data: {
+                name,
+                phone,
+                clinicId: clinicId || 'default-clinic-id',
+            },
+        });
 
-        if (error) {
-            return res.status(400).json({ success: false, error: error.message });
-        }
+        const appointment = await prisma.appointment.create({
+            data: {
+                patientId: patient.id,
+                clinicId: patient.clinicId,
+                state: status || 'PENDING',
+            },
+            include: {
+                patient: true,
+            },
+        });
 
-        res.status(201).json({ success: true, data: data[0] });
+        res.status(201).json({
+            success: true,
+            data: {
+                id: appointment.id,
+                name: patient.name,
+                phone: patient.phone,
+                appointment_time: appointment_time || '05:00 م',
+                type: type || 'كشف عام',
+                status: appointment.state,
+            },
+        });
     } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// مسار جلب مواعيد اليوم
+// 2. مسار جلب مواعيد اليوم باستخدام Prisma
 app.get('/api/patients/appointments/today', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('patients')
-            .select('*')
-            .order('created_at', { ascending: false });
+        const appointments = await prisma.appointment.findMany({
+            include: {
+                patient: true,
+            },
+            orderBy: {
+                createdAt: 'desc',
+            },
+        });
 
-        if (error) {
-            return res.status(400).json({ success: false, error: error.message });
-        }
+        const formattedData = appointments.map((app) => ({
+            id: app.id,
+            name: app.patient.name,
+            phone: app.patient.phone,
+            appointment_time: '05:00 م',
+            type: 'كشف عام',
+            status: app.state === 'PENDING' ? 'في الانتظار' : app.state,
+        }));
 
-        res.status(200).json({ success: true, data });
+        res.status(200).json({ success: true, data: formattedData });
     } catch (err: any) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// تشغيل السيرفر بعد تسجيل كافة المسارات
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
