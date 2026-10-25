@@ -3,7 +3,6 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import authRoutes from './routes/auth.routes';
-import patientRoutes from './routes/patient.routes';
 
 // 1. تحميل متغيرات البيئة في البداية أولاً
 dotenv.config();
@@ -72,7 +71,7 @@ app.get('/api/patients/appointments/today', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
-app.use('/api/patients', patientRoutes);
+
 // تشغيل السيرفر بعد تسجيل كافة المسارات
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
