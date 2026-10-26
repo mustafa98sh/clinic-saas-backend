@@ -6,6 +6,7 @@ import prisma from './db';
 import authRoutes from './routes/auth.routes';
 import { requireAuth } from './auth.middleware';
 
+
 dotenv.config();
 
 const app = express();
