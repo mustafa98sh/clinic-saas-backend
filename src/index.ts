@@ -1,18 +1,15 @@
-import express from 'express';
+import { Patient } from '@prisma/client';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { PrismaClient, Patient } from '@prisma/client';
+import express from 'express';
+import prisma from './db';
 import authRoutes from './routes/auth.routes';
+import { requireAuth } from './auth.middleware ';
 
 dotenv.config();
 
-const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-// مؤقت: ضع هنا نفس الـ id الذي كنت تضعه مكان 'default-clinic-id'
-// (انسخه من Supabase > Table Editor > Clinic > عمود id)
-const TEMP_CLINIC_ID = 'ضع_هنا_الـid';
 
 app.use(cors());
 app.use(express.json());
@@ -22,15 +19,20 @@ app.get('/', (req, res) => {
     res.json({ success: true, message: 'Clinic SaaS Backend is running! 🚀' });
 });
 
-// مسارات المصادقة
+// مسارات المصادقة (عامة: تسجيل الدخول)
 app.use('/api/auth', authRoutes);
 
+// كل ما يخص المرضى والمواعيد محمي:
+// requireAuth يتحقق من التوكن ويضع req.clinicId من عيادة المستخدم
+app.use('/api/patients', requireAuth);
+
 // ------------------------------------------------------------
-// البحث عن مرضى مسجلين بنفس الاسم (داخل العيادة فقط)
+// البحث عن مرضى مسجلين بنفس الاسم (داخل عيادة المستخدم فقط)
 // GET /api/patients/search?name=...
 // ------------------------------------------------------------
 app.get('/api/patients/search', async (req, res) => {
     try {
+        const clinicId = req.clinicId!;
         const q = String(req.query.name ?? '').trim();
         if (q.length < 2) {
             return res.json({ success: true, data: [] });
@@ -38,7 +40,7 @@ app.get('/api/patients/search', async (req, res) => {
 
         const patients = await prisma.patient.findMany({
             where: {
-                clinicId: TEMP_CLINIC_ID,
+                clinicId,
                 name: { contains: q, mode: 'insensitive' },
             },
             select: {
@@ -65,15 +67,16 @@ app.get('/api/patients/search', async (req, res) => {
 // ------------------------------------------------------------
 app.post('/api/patients/appointments', async (req, res) => {
     try {
+        const clinicId = req.clinicId!; // من التوكن، وليس من جسم الطلب
         const { patientId, name, phone, age, address, gender, appointment_time, type, status } =
             req.body;
 
         let patient: Patient | null;
 
         if (patientId) {
-            // مريض موجود: تأكد أنه يتبع نفس العيادة
+            // مريض موجود: تأكد أنه يتبع عيادة المستخدم
             patient = await prisma.patient.findFirst({
-                where: { id: patientId, clinicId: TEMP_CLINIC_ID },
+                where: { id: patientId, clinicId },
             });
             if (!patient) {
                 return res.status(404).json({ success: false, error: 'المريض غير موجود' });
@@ -93,7 +96,7 @@ app.post('/api/patients/appointments', async (req, res) => {
                     age: ageNum === null || Number.isNaN(ageNum) ? null : ageNum,
                     address: address || null,
                     gender: gender || null,
-                    clinicId: TEMP_CLINIC_ID, // لا نثق بـ clinicId القادم من التطبيق
+                    clinicId,
                 },
             });
         }
@@ -101,7 +104,7 @@ app.post('/api/patients/appointments', async (req, res) => {
         const appointment = await prisma.appointment.create({
             data: {
                 patientId: patient.id,
-                clinicId: TEMP_CLINIC_ID,
+                clinicId,
                 state: status || 'PENDING',
             },
         });
@@ -123,13 +126,13 @@ app.post('/api/patients/appointments', async (req, res) => {
 });
 
 // ------------------------------------------------------------
-// مواعيد اليوم
+// مواعيد عيادة المستخدم
 // GET /api/patients/appointments/today
 // ------------------------------------------------------------
 app.get('/api/patients/appointments/today', async (req, res) => {
     try {
         const appointments = await prisma.appointment.findMany({
-            where: { clinicId: TEMP_CLINIC_ID },
+            where: { clinicId: req.clinicId! },
             include: { patient: true },
             orderBy: { createdAt: 'desc' },
         });
