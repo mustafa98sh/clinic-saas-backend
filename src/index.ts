@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import prisma from './db';
 import authRoutes from './routes/auth.routes';
-import { requireAuth } from './auth.middleware ';
+import { requireAuth } from './auth.middleware';
 
 dotenv.config();
 

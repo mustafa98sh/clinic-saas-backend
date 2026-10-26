@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { Request, Response } from 'express';
-import { clinicProblem, findClinicForUser } from '../auth.middleware ';
+import { clinicProblem, findClinicForUser } from '../auth.middleware';
 
 
 dotenv.config();
